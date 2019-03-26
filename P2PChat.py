@@ -17,25 +17,28 @@ import socket
 rmAddr = str(sys.argv[1])
 rmPort = int(sys.argv[2])
 myPort = int(sys.argv[3])
-
-#
-# Set up of connection
-#
-
-# create socket and bind
 s = socket.socket()
-try:
-	s.bind(('', myPort))
-except socket.error as err:
-	print("Socket bind error: ", emsg)
-	sys.exit(1)
 
-# try connecting to room server
-try:
-	s.connect((rmAddr,rmPort))
-except socket.error as err:
-	print("Socket accept error: ", err)
-	sys.exit(1)
+
+#
+# Function to set up connection
+#
+def connectTCP():
+	# create socket and bind
+	# s = socket.socket()
+	try:
+		s.bind(('', myPort))
+	except socket.error as err:
+		print("Socket bind error: ", err)
+		sys.exit(1)
+
+	# try connecting to room server
+	try:
+		s.connect((rmAddr,rmPort))
+	except socket.error as err:
+		print("Socket accept error: ", err)
+		sys.exit(1)
+	return
 
 
 #
@@ -65,7 +68,37 @@ def do_User():
 
 
 def do_List():
-	CmdWin.insert(1.0, "\nPress List")
+	# esablish connection if there isnt one
+	if (s.getsockname() == ("0.0.0.0",0)):
+		connectTCP()
+
+	# send LIST request to Room server
+	smsg = "L::\r\n"
+	s.send(smsg.encode())
+
+	# receive respond from Room sever, max size 100 (?)
+	try:
+		rmsg = (s.recv(100)).decode("ascii")
+	except socket.error as err:
+		print("Socket recv error: ", err)
+		sys.exit(1)
+
+	# extract and interpret respond
+	results = rmsg.split(":")
+	if (results[0] == 'G'):
+		if (len(results) > 3):
+			# if has one or more chatroom groups
+			CmdWin.insert(1.0, "\nHere are the active chatrooms:")
+			for i in range(1, len(results)-2):
+				CmdWin.insert(1.0, "\n\t", results[i])
+		else:
+			# if no chatroom group
+			CmdWin.insert(1.0, "\nNo active chatrooms")
+	else:
+		# if encounters error
+		print ("Error: ", results[1])
+
+	CmdWin.insert(1.0, "\nConnect to server at "+s.getpeername()[0]+":"+str(s.getpeername()[1]))
 
 
 def do_Join():
