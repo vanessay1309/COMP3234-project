@@ -8,7 +8,7 @@ the logic of the program
 ### Stage 1 (8 points)
 - Correctness of the [ User ] button (1.5 points) √
 - Correctness of the [ List ] button (1.5 points) √
-- Correctness of the P2PChat-Roomserver interactions ( Join )(3 points)
+- Correctness of the P2PChat-Roomserver interactions ( Join )(3 points) [WORKING ON]
 - Correctness of the [ Poke ] button (2 points)
 
 ### Stage 2 (9 points)

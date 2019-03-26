@@ -77,6 +77,7 @@ def do_User():
 		# set username
 		username = input
 		CmdWin.insert(1.0, "\n[User] username: "+username)
+		userentry.delete(0, END)
 
 
 def do_List():
@@ -99,10 +100,9 @@ def do_List():
 	results = rmsg.split(":")
 	if (results[0] == 'G'):
 		if (len(results) > 3):
-			# if has one or more chatroom groups
-			CmdWin.insert(1.0, "\nHere are the active chatrooms:")
+			# if has one or more chatroom groups, display the rooms
 			for i in range(1, len(results)-2):
-				CmdWin.insert(1.0, "\n\t", results[i])
+				CmdWin.insert(1.0, "\n\t" + results[i])
 		else:
 			# if no chatroom group
 			CmdWin.insert(1.0, "\nNo active chatrooms")
@@ -112,17 +112,54 @@ def do_List():
 
 	CmdWin.insert(1.0, "\nConnect to server at "+s.getpeername()[0]+":"+str(s.getpeername()[1]))
 
-
+# TODO  Stop user already in a chat room to enter chat room again
+# TODO  StayAlive
 def do_Join():
+	# esablish connection if there isnt one
+	if (s.getsockname() == ("0.0.0.0",0)):
+		connectTCP()
+
 	if (username == ""):
+		#Prompt the user to set username if not already set
 		CmdWin.insert(1.0, "\nPlease set up username first before joining a chat room")
 		userentry.delete(0, END)
 	else:
-		chatroom = userentry.get()
-	# 	if (input == ""):
-	# 		CmdWin.insert(1.0, "\nNo input from user")
-	# 	else:
-	# 		CmdWin.insert(1.0, "\nUser input: "+input)
+		input = userentry.get()
+		if (input == ""):
+			CmdWin.insert(1.0, "\nPlease enter a name for the chatroom")
+		else:
+			# send JOIN request to Room server
+			smsg = "J:"+input+":"+username+":"+s.getsockname()[0]+":"+str(s.getsockname()[1])+"::\r\n"
+			CmdWin.insert(1.0, "\n[TESTING ONLY] Send request: "+smsg)
+			s.send(smsg.encode())
+
+			# receive respond from Room sever, max size 100 (?)
+			try:
+				rmsg = (s.recv(100)).decode("ascii")
+			except socket.error as err:
+				print("Socket recv error: ", err)
+				sys.exit(1)
+
+
+			# extract and interpret respond
+			results = rmsg.split(":")
+			if (results[0] == 'M'):
+				# successfully joined
+				#TODO Keep alive
+				CmdWin.insert(1.0, "\nSuccessfully joined the chatroom")
+				CmdWin.insert(1.0, "\n[TESTING ONLY] Received: "+rmsg)
+				CmdWin.insert(1.0, "\n[TESTING ONLY] result size:" +str(len(results)))
+
+				# Establish a forward link
+				# for i in range(0, (len(results)-4)/3):
+				# for [len(results)-4]/3
+				# for i*3
+			else:
+				# if encounters error
+				print ("[Error] ", results[1])
+
+
+
 
 
 def do_Send():
