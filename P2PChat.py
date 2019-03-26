@@ -17,6 +17,7 @@ import socket
 rmAddr = str(sys.argv[1])
 rmPort = int(sys.argv[2])
 myPort = int(sys.argv[3])
+username = ""
 s = socket.socket()
 
 
@@ -62,9 +63,20 @@ def sdbm_hash(instr):
 #
 
 def do_User():
-	outstr = "\n[User] username: "+userentry.get()
-	CmdWin.insert(1.0, outstr)
-	userentry.delete(0, END)
+	global username
+	input = userentry.get()
+
+	if input == "":
+		# handle empty input
+		CmdWin.insert(1.0, "\nPlease input username before pressing user button")
+	elif ':' in input:
+		# handle illegal character ':'
+		CmdWin.insert(1.0, "\nYou have an illegal character in your username, please input another one again ")
+		userentry.delete(0, END)
+	else:
+		# set username
+		username = input
+		CmdWin.insert(1.0, "\n[User] username: "+username)
 
 
 def do_List():
@@ -96,13 +108,21 @@ def do_List():
 			CmdWin.insert(1.0, "\nNo active chatrooms")
 	else:
 		# if encounters error
-		print ("Error: ", results[1])
+		print ("[Error] ", results[1])
 
 	CmdWin.insert(1.0, "\nConnect to server at "+s.getpeername()[0]+":"+str(s.getpeername()[1]))
 
 
 def do_Join():
-	CmdWin.insert(1.0, "\nPress JOIN")
+	if (username == ""):
+		CmdWin.insert(1.0, "\nPlease set up username first before joining a chat room")
+		userentry.delete(0, END)
+	else:
+		chatroom = userentry.get()
+	# 	if (input == ""):
+	# 		CmdWin.insert(1.0, "\nNo input from user")
+	# 	else:
+	# 		CmdWin.insert(1.0, "\nUser input: "+input)
 
 
 def do_Send():
