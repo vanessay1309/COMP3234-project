@@ -10,6 +10,7 @@
 from tkinter import *
 import sys
 import socket
+import time, threading
 
 #
 # Global variables
@@ -18,6 +19,8 @@ rmAddr = str(sys.argv[1])
 rmPort = int(sys.argv[2])
 myPort = int(sys.argv[3])
 username = ""
+roomname = ""
+roomhash = 0
 s = socket.socket()
 
 
@@ -41,6 +44,40 @@ def connectTCP():
 		sys.exit(1)
 	return
 
+#
+# Function to send Join request
+#
+def joinRequest():
+	smsg = "J:"+roomname+":"+username+":"+s.getsockname()[0]+":"+str(s.getsockname()[1])+"::\r\n"
+	CmdWin.insert(1.0, "\n[TESTING ONLY] joinRequest(): "+smsg)
+	s.send(smsg.encode())
+
+	# receive respond from Room sever, max size 100 (?)
+	try:
+		rmsg = (s.recv(100)).decode("ascii")
+	except socket.error as err:
+		print("Socket recv error: ", err)
+		sys.exit(1)
+
+	# parse respond
+	results = rmsg.split(":")
+	return results
+
+#
+# Function to updateMember
+#
+def updateMember(newhash):
+	if (roomhash != newhash):
+		CmdWin.insert(1.0, "\n[TESTING ONLY] updateMember(): new member joined")
+		roomhash = newhash
+
+
+
+def keepAlive():
+	print("keepalive at", time.ctime())
+	results = joinRequest()
+	updateMember(results[1])
+	threading.Timer(10, keepAlive).start()
 
 #
 # This is the hash function for generating a unique
@@ -57,10 +94,6 @@ def sdbm_hash(instr):
 		hash = int(ord(c)) + (hash << 6) + (hash << 16) - hash
 	return hash & 0xffffffffffffffff
 
-
-#
-# Functions to handle user input
-#
 
 def do_User():
 	global username
@@ -115,45 +148,70 @@ def do_List():
 # TODO  Stop user already in a chat room to enter chat room again
 # TODO  StayAlive
 def do_Join():
+	#changing global variable chatroom
+	global roomhash
+	global roomname
+
+	CmdWin.insert(1.0, "\n[Testing] Joined pressed, chatroom ="+str(roomhash))
+
 	# esablish connection if there isnt one
 	if (s.getsockname() == ("0.0.0.0",0)):
 		connectTCP()
 
+	# Check if user already joined a chatroom, reject request if so
+	if (roomhash != 0):
+		CmdWin.insert(1.0, "\nYour request is denied, you already joined a chatroom")
+		return
+
+	# Check if user set up username
 	if (username == ""):
-		#Prompt the user to set username if not already set
 		CmdWin.insert(1.0, "\nPlease set up username first before joining a chat room")
 		userentry.delete(0, END)
 	else:
+		# Check if user input chatroom name
 		input = userentry.get()
 		if (input == ""):
 			CmdWin.insert(1.0, "\nPlease enter a name for the chatroom")
 		else:
 			# send JOIN request to Room server
-			smsg = "J:"+input+":"+username+":"+s.getsockname()[0]+":"+str(s.getsockname()[1])+"::\r\n"
-			CmdWin.insert(1.0, "\n[TESTING ONLY] Send request: "+smsg)
-			s.send(smsg.encode())
+			roomname = input
+			results = joinRequest()
 
-			# receive respond from Room sever, max size 100 (?)
-			try:
-				rmsg = (s.recv(100)).decode("ascii")
-			except socket.error as err:
-				print("Socket recv error: ", err)
-				sys.exit(1)
-
-
-			# extract and interpret respond
-			results = rmsg.split(":")
+			# interpret respond
 			if (results[0] == 'M'):
-				# successfully joined
-				#TODO Keep alive
-				CmdWin.insert(1.0, "\nSuccessfully joined the chatroom")
-				CmdWin.insert(1.0, "\n[TESTING ONLY] Received: "+rmsg)
-				CmdWin.insert(1.0, "\n[TESTING ONLY] result size:" +str(len(results)))
 
-				# Establish a forward link
-				# for i in range(0, (len(results)-4)/3):
-				# for [len(results)-4]/3
-				# for i*3
+				# successfully joined, set chatroom as the chatroom hash, and start keepAlive in 20s
+				CmdWin.insert(1.0, "\nKeepalive thread - Start execution")
+				threading.Timer(20, keepAlive).start()
+
+				roomhash=results[1]
+				CmdWin.insert(1.0, "\n[TESTING ONLY] initial room hash:" +str(roomhash))
+
+				#Establish a forward link [still working]
+				CmdWin.insert(1.0, "\n[TESTING ONLY] member size:" +str((len(results)-4)/3))
+				gList=[]
+
+				# for each member, calculate Hash ID then store info in gList as tuple(hash, name, addr, port)
+				for i in range(0, int((len(results)-4)/3)):
+					name = results[(i*3)+2]
+					addr = results[(i*3)+3]
+					port = results[(i*3)+4]
+					hash = sdbm_hash(name+addr+port)
+
+					CmdWin.insert(1.0, "\n[TESTING ONLY] [i]="+str(i)+" name="+name+" addr="+addr+" port="+port+" hash="+str(hash))
+
+					gList.append((hash, name, addr, port))
+
+				CmdWin.insert(1.0, "\n[TESTING ONLY] Before sort: gList="+str(gList))
+
+				# sort list according to ascending order of memebr hash
+				gList.sort(key = lambda t: int(t[0]))
+
+				CmdWin.insert(1.0, "\n[TESTING ONLY] After sort: gList="+str(gList))
+
+
+
+
 			else:
 				# if encounters error
 				print ("[Error] ", results[1])
