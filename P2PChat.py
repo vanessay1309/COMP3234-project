@@ -23,10 +23,11 @@ username = ""
 roomname = ""
 roomhash = 0
 myHashID = 0
-fwdLinks = []
+fwdLink = []
+# storing list of backward link as tuple: (socket, (username, IP, Port))
+bwdLinks=[]
 msgID = 0
 gList=[]
-backwardLinks=[]
 s = socket.socket()
 f = socket.socket()
 b = socket.socket()
@@ -50,28 +51,43 @@ def connectServer():
 	return
 
 #
-# thread function for accepting incoming connection
+# Thread function for accepting the backward link
+#
+def tryBackwardLink(client):
+	peer, conn = client
+
+	# receive respond from peer, max size 100 (?)
+	try:
+		rmsg = (peer.recv(100)).decode("ascii")
+		CmdWin.insert(1.0, "\n[TESTING ONLY] received P2P handshake respond="+rmsg)
+	except socket.error as err:
+		print("acceptTCP(): Socket recv error: ", err)
+		return
+
+	# a tuple to store user name, IP, port
+	memberinfo = ""
+	# Logic to check if the peer is authenticated from room server
+
+	#if yes send P2P handshake respond to peer (if no --> peer.close())
+	smsg = "S:"+str(msgID)+"::\r\n"
+	peer.send(smsg.encode("ascii"))
+	CmdWin.insert(1.0, "\n[TESTING ONLY] acceptTCP(): send out respond"+smsg)
+
+	# Add the link to list of backward links
+	bwdLinks.append((peer, memberinfo))
+	print("[TESTING ONLY] Backward links: ", str(bwdLinks))
+	tempS = bwdLinks[0]
+	print ("[TESTING ONLY] First backward link is:"+tempS.getsockname()[0]+":"+str(tempS.getsockname()[1]))
+#
+# Thread function for accepting incoming connection
 #
 def acceptTCP():
 	CmdWin.insert(1.0, "\nListening to incoming TCP connection")
 	while (True):
-		peer, addr = b.accept()
-		CmdWin.insert(1.0, "\n[TESTING ONLY] accepted connection from :" +peer.getpeername()[0]+":"+str(peer.getpeername()[1]))
-		backwardLinks.append(peer)
-		CmdWin.insert(1.0, "\n[TESTING ONLY] Backward links: " +str(backwardLinks))
+		client = b.accept()
+		newbk=threading.Thread(target=tryBackwardLink,args=(client,))
+		newbk.start()
 
-		# receive respond from peer, max size 100 (?)
-		try:
-			rmsg = (peer.recv(100)).decode("ascii")
-			CmdWin.insert(1.0, "\n[TESTING ONLY] received P2P handshake respond="+rmsg)
-		except socket.error as err:
-			print("acceptTCP(): Socket recv error: ", err)
-			return
-
-		# send P2P handshake respond to peer
-		smsg = "S:"+str(msgID)+"::\r\n"
-		peer.send(smsg.encode("ascii"))
-		CmdWin.insert(1.0, "\n[TESTING ONLY] acceptTCP(): send out respond"+smsg)
 
 #
 # Function to set up listening socket for incoming TCP connection
@@ -85,7 +101,6 @@ def listeningSocket():
 		sys.exit(1)
 
 	# try connecting to room server
-	CmdWin.insert(1.0, "\n[TESTING ONLY] Try to set up listen socket")
 	try:
 		b.listen(5)
 	except socket.error as err:
@@ -102,7 +117,6 @@ def listeningSocket():
 # Function to send Join request
 #
 def joinRequest(rmname):
-
 	smsg = "J:"+rmname+":"+username+":"+s.getsockname()[0]+":"+str(myPort)+"::\r\n"
 	s.send(smsg.encode())
 
@@ -121,13 +135,13 @@ def joinRequest(rmname):
 # Function to establish forward link
 #
 def tryForwardLink(results):
-	global fwdLinks
+	global fwdLink
 	global f
 
 	memberSize = int(len(results)-4)/3
 
 	if memberSize == 1:
-		CmdWin.insert(1.0, "\n tryFowardLink(): Forward link is not established as you are the only member")
+		CmdWin.insert(1.0, "\nForward link is not established as you are the only member")
 		return
 
 	else:
@@ -160,6 +174,8 @@ def tryForwardLink(results):
 
 		while gList[start][0] != myHashID:
 			# TODO logic to check backward link exist
+
+
 			bkLink = 0
 			if bkLink:
 				start = (start + 1) % len(gList)
@@ -184,7 +200,7 @@ def tryForwardLink(results):
 					if ready[0]:
 						rmsg = (f.recv(100)).decode("ascii")
 						CmdWin.insert(1.0, "\n[TESTING ONLY] P2P handshaking success, received respond="+rmsg)
-						fwdLinks.append(f)
+						fwdLink.append(f)
 						break
 					else:
 						print("cannot connect to this peer, increment to next")
@@ -195,7 +211,7 @@ def tryForwardLink(results):
 					f.close()
 					start = (start + 1) % len(gList)
 
-	CmdWin.insert(1.0, "\n tryFowardLink(): after establishing, forwardlinks:"+str(fwdLinks))
+	CmdWin.insert(1.0, "\n tryFowardLink(): after establishing, forwardlinks:"+str(fwdLink))
 
 
 
