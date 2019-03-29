@@ -9,6 +9,10 @@ the logic of the program
 - Correctness of the [ User ] button (1.5 points) √
 - Correctness of the [ List ] button (1.5 points) √
 - Correctness of the P2PChat-Roomserver interactions ( Join )(3 points) [WORKING ON]
+    TODO:
+    (1) defined structure for storing forward link & back link
+    (2) Logic to check if backlink exist
+    (3) Check if forward link lost when member list is updated; if yes call tryFowardLink()
 - Correctness of the [ Poke ] button (2 points)
 
 ### Stage 2 (9 points)
