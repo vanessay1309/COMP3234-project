@@ -23,7 +23,7 @@ username = ""
 roomname = ""
 roomhash = 0
 myHashID = 0
-fwdLink = []
+fwdLink = ()
 # storing list of backward link as tuple: (socket, (username, IP, Port))
 bwdLinks=[]
 msgID = 0
@@ -59,25 +59,53 @@ def tryBackwardLink(client):
 	# receive respond from peer, max size 100 (?)
 	try:
 		rmsg = (peer.recv(100)).decode("ascii")
-		CmdWin.insert(1.0, "\n[TESTING ONLY] received P2P handshake respond="+rmsg)
 	except socket.error as err:
-		print("acceptTCP(): Socket recv error: ", err)
+		print("[incoming TCP] Socket recv error: ", err)
 		return
 
-	# a tuple to store user name, IP, port
-	memberinfo = ""
-	# Logic to check if the peer is authenticated from room server
+	# parse respond
+	results = rmsg.split(":")
+	print("[incoming TCP] receive P2P handshake Request from ", results[2])
 
-	#if yes send P2P handshake respond to peer (if no --> peer.close())
-	smsg = "S:"+str(msgID)+"::\r\n"
-	peer.send(smsg.encode("ascii"))
-	CmdWin.insert(1.0, "\n[TESTING ONLY] acceptTCP(): send out respond"+smsg)
+	if results[0] == 'P':
+		# Check if the chatroom is my connected chatroom
+		if results[1] != roomname :
+			print("[incoming TCP] P2P handshake Request is not from my chatroom, reject connection")
+			peer.close()
+			return
 
-	# Add the link to list of backward links
-	bwdLinks.append((peer, memberinfo))
-	print("[TESTING ONLY] Backward links: ", str(bwdLinks))
-	tempS = bwdLinks[0]
-	print ("[TESTING ONLY] First backward link is:"+tempS.getsockname()[0]+":"+str(tempS.getsockname()[1]))
+		# Logic to check if the peer is in the member list
+		if any(ip[2] == results[3] for ip in gList) and any(port[3] == results[4] for port in gList) :
+			print ("[incoming TCP] this peer is known in member list, accept connection")
+		else:
+			# send Join request and update member list, then check again
+			members = joinRequest(roomname)
+			updateMember(members)
+
+			if any(ip[2] == results[3] for ip in gList) and any(port[3] == results[4] for port in gList) :
+				print ("[incoming TCP] this peer is known in member list, accept connection")
+			else:
+				print ("[incoming TCP] this peer is not known in member list, reject connection")
+				peer.close()
+				return
+
+		# send P2P handshake respond to peer
+		smsg = "S:"+str(msgID)+"::\r\n"
+		peer.send(smsg.encode("ascii"))
+		print("[incoming TCP] sent out P2P Respond to", results[2])
+
+		# store as tuple (user name, IP, port)
+		memberinfo = (results[2], results[3], int(results[4]))
+
+		# Add the link to list of backward links
+		bwdLinks.append((peer, memberinfo))
+		CmdWin.insert(1.0, "\n"+results[2]+" has linked to me")
+		print("[incoming TCP] "+results[2]+" has linked to me")
+
+	else:
+		# if encounters error, print error message
+		print ("[incoming TCP] unable to recognise message")
+
 #
 # Thread function for accepting incoming connection
 #
@@ -88,7 +116,6 @@ def acceptTCP():
 		newbk=threading.Thread(target=tryBackwardLink,args=(client,))
 		newbk.start()
 
-
 #
 # Function to set up listening socket for incoming TCP connection
 #
@@ -97,18 +124,15 @@ def listeningSocket():
 	try:
 		b.bind(('', myPort))
 	except socket.error as err:
-		print("Socket bind error: ", err)
+		print("[incomingTCP listener] Socket bind error: ", err)
 		sys.exit(1)
 
 	# try connecting to room server
 	try:
 		b.listen(5)
 	except socket.error as err:
-		print("Socket accept error: ", err)
+		print("[incomingTCP listener] Socket accept error: ", err)
 		sys.exit(1)
-
-	CmdWin.insert(1.0, "\n[TESTING ONLY] Set up listening socket"+b.getsockname()[0]+":"+str(b.getsockname()[1]))
-
 	t=threading.Thread(target=acceptTCP,args=[])
 	t.start()
 	return
@@ -138,13 +162,89 @@ def tryForwardLink(results):
 	global fwdLink
 	global f
 
-	memberSize = int(len(results)-4)/3
+	memberSize = len(gList)
 
 	if memberSize == 1:
 		CmdWin.insert(1.0, "\nForward link is not established as you are the only member")
 		return
-
 	else:
+		# sort list according to ascending order of memebr hash
+		gList.sort(key = lambda t: int(t[0]))
+
+		# locate this program's index on the sorted list, set start as its next
+		start = (([x[0] for x in gList].index(myHashID))+1) % len(gList)
+
+		# bind socket for forward link
+		try:
+			f.bind(('', 0))
+		except socket.error as err:
+			CmdWin.insert(1.0, "\n Cannot be linked to the group, try again in")
+			print("[P2P] Socket bind error: ", err+" try again in")
+			# TODO try forward link later
+			return
+
+		while gList[start][0] != myHashID:
+			# logic to check if backward link from this peer exists
+			if any(ip[1][1] == gList[start][2] for ip in bwdLinks) and any(port[1][2] == gList[start][3] for port in bwdLinks):
+				print ("[P2P] This peer has a backward link to me already")
+				start = (start + 1) % len(gList)
+			else:
+				try:
+					f.connect((gList[start][2],int(gList[start][3])))
+				except socket.error as err:
+					print("[P2P] Socket accept error: ", err)
+
+				#run Peer-to-peer handshaking, send request to peer
+				try:
+					smsg = "P:"+roomname+":"+username+":"+f.getsockname()[0]+":"+str(myPort)+":"+str(msgID)+"::\r\n"
+					f.send(smsg.encode("ascii"))
+					f.setblocking(0)
+					ready = select.select([f], [], [], 8)
+
+					if ready[0]:
+						rmsg = (f.recv(100)).decode("ascii")
+
+						# store as tuple (f, (username, IP, port))
+						memberinfo = (gList[start][1], gList[start][2], gList[start][3])
+						fwdLink = (f, memberinfo)
+
+						print("[P2P] P2P handshaking success, linked to the group - via "+gList[start][1])
+						print("[testing] forwardLink:"+str(fwdLink))
+						CmdWin.insert(1.0, "\nSuccessfully linked to the group - via "+gList[start][1])
+						break
+					else:
+						# timeout or connection error
+						print("[P2P] Connection error: cannot receive respond. Try forward link to next peer")
+						f.close()
+						start = (start + 1) % len(gList)
+
+				except socket.error as err:
+					print("[P2P] Connection error: "+err+". Try forward link to next peer")
+
+
+			CmdWin.insert(1.0, "\n Cannot be linked to the group, try again in")
+			print("[P2P] Cannot find any peer to P2P handshake, trying again in ")
+			# TODO logic to try again
+
+#
+# Function to updateMember
+#
+def updateMember(results):
+	global roomhash
+	global fwdLink
+	newhash = results[1]
+
+
+	if (roomhash != newhash):
+		print("[System] Memberlist has updated")
+
+		# update roomhash and update gList
+		roomhash = newhash
+		memberSize = int(len(results)-4)/3
+
+		#clear previous gList
+		gList.clear()
+
 		# for each member, calculate Hash ID then store info in gList as tuple(hash, name, addr, port)
 		for i in range(0, int(memberSize)):
 			name = results[(i*3)+2]
@@ -153,82 +253,25 @@ def tryForwardLink(results):
 			hash = sdbm_hash(name+addr+port)
 			gList.append((hash, name, addr, port))
 
-		CmdWin.insert(1.0, "\n[TESTING ONLY] tryFowardLink(): Before sort: gList="+str(gList))
+		# if established a forward link
+		# and forward link peer is not in new member list, establish new forward link
+		if fwdLink != ():
+			fwdIp = fwdLink[1][1]
+			fwdPort = fwdLink[1][2]
 
-		# sort list according to ascending order of memebr hash
-		gList.sort(key = lambda t: int(t[0]))
-
-		CmdWin.insert(1.0, "\n[TESTING ONLY] tryFowardLink(): After sort: gList="+str(gList))
-
-		# locate this program's index on the sorted list, set start as its next
-		start = (([x[0] for x in gList].index(myHashID))+1) % len(gList)
-		CmdWin.insert(1.0, "\n[TESTING ONLY] tryFowardLink(): my next index on gList="+str(start))
-
-		# bind socket for forward link
-		try:
-			f.bind(('', 0))
-		except socket.error as err:
-			print("tryFowardLink(): Socket bind error: ", err)
-			# TODO try forward link later
-			return
-
-		while gList[start][0] != myHashID:
-			# TODO logic to check backward link exist
-
-
-			bkLink = 0
-			if bkLink:
-				start = (start + 1) % len(gList)
+			if any(ip[2] == fwdIp for ip in gList) and any(port[3] == fwdPort for port in gList) :
+				print("[System] Foward link is still intact")
 			else:
-				try:
-					f.connect((gList[start][2],int(gList[start][3])))
-				except socket.error as err:
-					print("tryFowardLink(): Socket accept error: ", err)
-
-				# if connection is established
-				if (f.getsockname() != ("0.0.0.0",0)):
-					CmdWin.insert(1.0, "\n[TESTING ONLY] TCP connection from "+f.getsockname()[0]+":"+str(f.getsockname()[1]))
-					CmdWin.insert(1.0, "\n[TESTING ONLY] TCP connection to "+f.getpeername()[0]+":"+str(f.getpeername()[1])+" successed, proceed to peer to peer handshaking")
-
-					#run Peer-to-peer handshaking, send request to peer
-					smsg = "P::"+roomname+":"+username+":"+f.getsockname()[0]+":"+str(f.getsockname()[1])+":"+str(msgID)+"::\r\n"
-					f.send(smsg.encode("ascii"))
-
-					# try to receive respond from peer, set time out as 8s; if timeout try next peer
-					f.setblocking(0)
-					ready = select.select([f], [], [], 8)
-					if ready[0]:
-						rmsg = (f.recv(100)).decode("ascii")
-						CmdWin.insert(1.0, "\n[TESTING ONLY] P2P handshaking success, received respond="+rmsg)
-						fwdLink.append(f)
-						break
-					else:
-						print("cannot connect to this peer, increment to next")
-						f.close()
-						start = (start + 1) % len(gList)
-				else:
-					print("cannot connect to this peer, increment to next")
-					f.close()
-					start = (start + 1) % len(gList)
-
-	CmdWin.insert(1.0, "\n tryFowardLink(): after establishing, forwardlinks:"+str(fwdLink))
-
-
-
-#
-# Function to updateMember
-#
-def updateMember(newhash):
-	global roomhash
-
-	if (roomhash != newhash):
-		CmdWin.insert(1.0, "\n[TESTING ONLY] updateMember(): member list has updated")
-		roomhash = newhash
+				print("[System] Forward link is broken, try to re-establish forward link")
+				CmdWin.insert(1.0, "\nForward link is broken, try to re-establish forward link")
+				fwdLink = ()
+				tryForwardLink(roomname)
+	return
 
 def keepAlive():
 	print("keepalive at", time.ctime())
 	results = joinRequest(roomname)
-	updateMember(results[1])
+	updateMember(results)
 	threading.Timer(10, keepAlive).start()
 
 #
@@ -329,26 +372,26 @@ def do_Join():
 			# interpret respond
 			if (results[0] == 'M'):
 
-				# successfully joined, set roomhash, roomname and myHashID
-				CmdWin.insert(1.0, "\n[TESTING] join request success, recived: "+str(results))
+				# successfully joined, set roomname and myHashID
 				roomname=input
-				roomhash=results[1]
 				myHashID = sdbm_hash(username+s.getsockname()[0]+str(myPort))
+
+				# called updateMember() to store member list in gList[]
+				updateMember(results)
 
 				# start keepAlive in 20s
 				CmdWin.insert(1.0, "\nKeepalive thread - Start execution")
 				threading.Timer(20, keepAlive).start()
 
-				#Establish a forward link if there is not one
+				# Establish a forward link if there is not one
 				if (f.getsockname() == ("0.0.0.0",0)):
 					tryForwardLink(results)
 
-				# continue listen to incoming connection (backward links)
+				# Set up listener for backward links
 				listeningSocket()
 
-
 			else:
-				# if encounters error
+				# if encounters error, print error message
 				print ("[Error] ", results[1])
 
 
