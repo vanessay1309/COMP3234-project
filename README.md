@@ -13,7 +13,7 @@ the logic of the program
 
 ### Stage 2 (9 points)
 - Correctness of the [ Quit ] button (1 point)
-- Correctness of the [ Send ] button (2 points)
-- Correct interactions between multiple P2PChat peers under normal situation (3 points)
+- Correctness of the [ Send ] button (2 points) √
+- Correct interactions between multiple P2PChat peers under normal situation (3 points) √ [could have potential loop?]
 - Correct responses and interactions between multiple P2PChat peers with peers leaving and
-rejoining the chatroom network (3 points)
+rejoining the chatroom network (3 points) √ [to debug on broken connections]
