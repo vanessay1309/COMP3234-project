@@ -1,10 +1,10 @@
 #!/usr/bin/python3
 
-# Student name and No.:
-# Student name and No.:
-# Development platform:
-# Python version:
-# Version:
+# Student name and No.: Yam Mei Ki 3035305318
+# Student name and No.: Ng Helen Hoi Ling 3035269629
+# Development platform: Mac OS
+# Python version: Python 3.7
+# Version: 1.0
 
 
 from tkinter import *
@@ -349,6 +349,11 @@ def connect_Server():
 		print("connect_Server(): Socket accept error: ", err)
 		sys.exit(1)
 	return
+#
+# Function to display error message, called by do_Poke()
+#
+def errormsg():
+	CmdWin.insert(1.0, "\nError: No response from target")
 
 #
 # This is the hash function for generating a unique
@@ -503,11 +508,44 @@ def do_Send():
 		msgID = msgID + 1
 
 def do_Poke():
-	CmdWin.insert(1.0, "\nPress Poke")
+	# Check if user already joined a chatroom, reject request if user is not
+	if (roomhash = 0):
+		CmdWin.insert(1.0, "\nPlease join a chatroom before sending a poke")
+		return
+	else:
+		# Check if user provides target's nickname. If not, print list of nicknames in the chatroom
+		input = userentry.get()
+		if (input == ""):
+			CmdWin.insert(1.0, "\nTo whom you want to send the poke?")
+			for i in range(0, len(gList)-1):
+				CmdWin.insert(1.0, "\n\t" + gList[i])
+		else:
+			# Logic to check if the target is in the member list
+			if any(username[0] == input for username in gList):
+				# send POKE message to target member
+				smsg = "K:"+roomname+":"+input+"::\r\n"
+				peer.send(smsg.encode())
 
+				try:
+					rmsg = (peer.recv(100)).decode("ascii")
+					if rmsg == "A::\r\n":
+						print ("POKE is successful")
+						break
+					threading.Timer(2.0, errormsg).start()
+			else:
+				CmdWin.insert(1.0, "\n[Error]: No such user in chatroom")
+				return
 
 def do_Quit():
-	CmdWin.insert(1.0, "\nPress Quit")
+	if s:
+		s.close()
+		print("Quit: Socket to Room Server Closed")
+	if fwdLink:
+		fwdLink.close()
+		print("Quit: Socket to Forward Link Closed")
+	for back in bwdLinks:
+		back[1].close()
+		print("Quit: Socket to Backward Link Closed")
 	sys.exit(0)
 
 
