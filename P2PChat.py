@@ -33,7 +33,6 @@ s = socket.socket()
 f = socket.socket()
 b = socket.socket()
 
-
 #
 # Function to boardcast message to all backward links, used by do_send() and listen_backward_Message()
 #
@@ -356,6 +355,13 @@ def errormsg():
     CmdWin.insert(1.0, "\nError: No response from target")
 
 #
+# Function to connect UDP socket
+#
+#def u_sock(ip,port):
+#    u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#    u.bind(("",port))
+
+#
 # This is the hash function for generating a unique
 # Hash ID for each peer.
 # Source: http://www.cse.yorku.ca/~oz/hash.html
@@ -517,14 +523,23 @@ def do_Poke():
         input = userentry.get()
         if (input == ""):
             CmdWin.insert(1.0, "\nTo whom you want to send the poke?")
-            #for i in range(0, len(gList)-1):
-            CmdWin.insert(1.0, "\n\t" + gList)
+            for i in range(0, len(gList)):
+                CmdWin.insert(1.0, "\n\t" + gList[i][1])
         else:
             # Logic to check if the target is in the member list
-            if any(username == input for username in gList):
+            if any(username[1] == input for username in gList):
                 # send POKE message to target member
+                CmdWin.insert(1.0, "\nok")
+                # get target's IP address and port number
+                indx = [i for i, tupl in enumerate(gList) if tupl[1] == input]
+                a = indx[0]
+                ip_1 = gList[a][2]
+                port_no = gList[a][3]
+
+                u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                u.bind((ip_1,port_no))
                 smsg = "K:"+roomname+":"+input+"::\r\n"
-                peer.send(smsg.encode())
+                u.send(smsg.encode())
 
                 try:
                     rmsg = (peer.recv(100)).decode("ascii")
@@ -537,15 +552,15 @@ def do_Poke():
                 return
 
 def do_Quit():
-    threading.Timer(20, keep_Alive).cancel()
+    #threading.Timer(20, keep_Alive).cancel()
     if s:
         s.close()
         print("Quit: Socket to Room Server Closed")
-    if fwdLink:
-        fwdLink.close()
+    if f:
+        f.close()
         print("Quit: Socket to Forward Link Closed")
-    for back in bwdLinks:
-        bwdLinks.close()
+    if b:
+        b.close()
         print("Quit: Socket to Backward Link Closed")
     sys.exit(0)
 
